@@ -9,7 +9,10 @@ import UIKit
 
 final class ViewController: UIViewController {
     
-    private let bankManager = BankManager(depositTellerCount: 2, loanTellerCount: 1)
+    private var bankManager = BankManager(depositTellerCount: 2, loanTellerCount: 1)
+    
+    private var timer: Timer = Timer()
+    private var time: Double = 0
     
     private lazy var mainStackView: UIStackView = {
         let view = UIStackView()
@@ -37,15 +40,15 @@ final class ViewController: UIViewController {
         let button = UIButton()
         button.setTitle("초기화", for: .normal)
         button.setTitleColor(.red, for: .normal)
-        button.addTarget(self, action: #selector(resetTimer), for: .touchUpInside)
+        button.addTarget(self, action: #selector(resetButtonTapped), for: .touchUpInside)
         return button
     }()
     
     private lazy var timerTitleLabel: UILabel = {
         let label = UILabel()
-        label.text = "업무 시간 - 04:44:44"
+        label.text = "업무 시간 - 00:00:00"
         label.textAlignment = .center
-        label.font = .systemFont(ofSize: 24)
+        label.font = .monospacedSystemFont(ofSize: 24, weight: .regular)
         return label
     }()
     
@@ -101,6 +104,7 @@ final class ViewController: UIViewController {
     
     private lazy var runningListScrollView: UIScrollView = {
         let view = UIScrollView()
+        view.bounces = false
         return view
     }()
     
@@ -114,24 +118,8 @@ final class ViewController: UIViewController {
     private lazy var runningListStackView: UIStackView = {
         let view = UIStackView()
         view.axis = .vertical
+        view.spacing = 16
         return view
-    }()
-    
-    private lazy var temp1: UILabel = {
-        let label = UILabel()
-        label.text = "1 - 예금"
-        label.textAlignment = .center
-        label.font = .systemFont(ofSize: 24)
-        return label
-    }()
-    
-    private lazy var temp2: UILabel = {
-        let label = UILabel()
-        label.text = "2 - 대출"
-        label.textAlignment = .center
-        label.font = .systemFont(ofSize: 24)
-        label.textColor = .orange
-        return label
     }()
     
     override func viewDidLoad() {
@@ -139,11 +127,12 @@ final class ViewController: UIViewController {
         view.backgroundColor = .white
         configure()
         setupAutoLayout()
-        
-       
-        
+        NotificationCenter.default.addObserver(self, selector: #selector(addDepositLabel), name: NSNotification.Name("AddDepositLabel"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(addLoanLabel), name: NSNotification.Name("AddLoanLabel"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(removeReadyListLabel), name: NSNotification.Name("RemoveReadyLabel"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(removeRunningLabel), name: NSNotification.Name("RemoveRunningLabel"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(stopTimer), name: NSNotification.Name("StopTimer"), object: nil)
     }
-
     
     func configure() {
         view.addSubview(mainStackView)
@@ -158,6 +147,8 @@ final class ViewController: UIViewController {
         titleStackView.addArrangedSubview(readyTitleLabel)
         titleStackView.addArrangedSubview(runningTitleLabel)
         
+        // listStackView -> readyListView / runningListView
+        // readyListView -> readyListScrollView -> readyListStackView
         listStackView.addArrangedSubview(readyListView)
         listStackView.addArrangedSubview(runningListView)
         
@@ -166,10 +157,6 @@ final class ViewController: UIViewController {
         
         readyListScrollView.addSubview(readyListStackView)
         runningListScrollView.addSubview(runningListStackView)
-        
-        readyListStackView.addArrangedSubview(temp1)
-        readyListStackView.addArrangedSubview(temp2)
-        
     }
     
     func setupAutoLayout() {
@@ -205,45 +192,124 @@ final class ViewController: UIViewController {
         
         runningListStackView.translatesAutoresizingMaskIntoConstraints = false
         
-        runningListStackView.topAnchor.constraint(equalTo: runningListStackView.topAnchor).isActive = true
-        runningListStackView.bottomAnchor.constraint(equalTo: runningListStackView.bottomAnchor).isActive = true
-        runningListStackView.leadingAnchor.constraint(equalTo: runningListStackView.leadingAnchor).isActive = true
-        runningListStackView.trailingAnchor.constraint(equalTo: runningListStackView.trailingAnchor).isActive = true
+        runningListStackView.topAnchor.constraint(equalTo: runningListScrollView.topAnchor).isActive = true
+        runningListStackView.bottomAnchor.constraint(equalTo: runningListScrollView.bottomAnchor).isActive = true
+        runningListStackView.leadingAnchor.constraint(equalTo: runningListScrollView.leadingAnchor).isActive = true
+        runningListStackView.trailingAnchor.constraint(equalTo: runningListScrollView.trailingAnchor).isActive = true
         runningListStackView.widthAnchor.constraint(equalTo: runningListScrollView.widthAnchor).isActive = true
     }
     
     @objc func addCustomer() {
-//        
-//        bankManager.createCustomerQueue(customerCount: 10)
-//        for _ in 1...10 {
-//            
-//            let customerLabel = UILabel()
-//            readyListStackView.addArrangedSubview(customerLabel)
-//        }
-//        
-//       guard let de = bankManager.depositCustomerQueue.peek()
-//        
-//        if bankManager.depositCustomerQueue.peek() > bankManager.loanCustomerQueue.peek() {
-//            
-//        }
-//        
-        
+        DispatchQueue.global().async { [self] in
+            bankManager.createCustomerQueue(customerCount: 10)
+            bankManager.totalCustomer += 10
+            startTimer()
+            bankManager.startTask()
+        }
     }
     
-    @objc func resetTimer() {
-        
+    func startTimer() {
+        DispatchQueue.main.async { [self] in
+            if !timer.isValid {
+                timer = Timer.scheduledTimer(timeInterval: 0.001, target: self, selector: #selector(setTimerLabel), userInfo: nil, repeats: true)
+                RunLoop.main.add(timer, forMode: .common)
+            }
+        }
     }
     
-    
-    
-    func setupLabel() {
-        
-       
-        
-        
+    @objc func stopTimer() {
+        timer.invalidate()
     }
     
+    func resetTimer() {
+        stopTimer()
+        time = 0
+        bankManager.totalCustomer = 0
+        timerTitleLabel.text = "00 : 00 : 000"
+    }
     
+    @objc func setTimerLabel() {
+        let minute: String = String(format: "%02d", Int(time / 60))
+        let second: String = String(format: "%02d", Int(time) % 60)
+        let millisecond = String(format: "%03d", Int(time * 1000) % 1000)
+        
+        time += 0.001
+        timerTitleLabel.text = "\(minute) : \(second) : \(millisecond)"
+    }
+    
+    private func makeLabel(type: TypeOfWork, number: Any) {
+        DispatchQueue.main.async { [self] in
+            let label = UILabel()
+            label.text = "\(number) - \(type.name)"
+            label.textAlignment = .center
+            label.textColor = type == TypeOfWork.Deposit ? .orange : .black
+            readyListStackView.addArrangedSubview(label)
+        }
+    }
+    
+    @objc func addDepositLabel(_ notification: Notification) {
+        guard let number = notification.object else { return }
+        makeLabel(type: .Deposit, number: number)
+    }
+    
+    @objc func addLoanLabel(_ notification: Notification) {
+        guard let number = notification.object else { return }
+        makeLabel(type: .Loan, number: number)
+    }
+    
+    @objc func removeReadyListLabel(_ notification: Notification) {
+        guard let data = notification.object else { return }
+        
+        DispatchQueue.main.async { [self] in
+            let readySubviews = readyListStackView.arrangedSubviews
+            var resultLabel: UILabel?
+            
+            readySubviews.forEach { label in
+                guard let label = label as? UILabel, let text = label.text else { return }
+                if text == data as? String {
+                    resultLabel = label
+                }
+            }
+            
+            guard let label = resultLabel else { return }
+            label.removeFromSuperview()
+            runningListStackView.addArrangedSubview(label)
+        }
+    }
+    
+    @objc func removeRunningLabel(_ notification: Notification) {
+        guard let data = notification.object else { return }
+        
+        DispatchQueue.main.async { [self] in
+            let runningSubViews = runningListStackView.arrangedSubviews
+            var resultLabel: UILabel?
+            
+            runningSubViews.forEach { label in
+                guard let label = label as? UILabel, let text = label.text else { return }
+                if text == data as? String {
+                    resultLabel = label
+                }
+            }
+            
+            guard let label = resultLabel else { return }
+            label.removeFromSuperview()
+            
+            if runningListStackView.arrangedSubviews.isEmpty && readyListStackView.arrangedSubviews.isEmpty {
+                timer.invalidate()
+            }
+        }
+    }
+    
+    @objc func resetButtonTapped() {
+        print("초기화 누름")
+        DispatchQueue.main.async { [self] in
+            resetTimer()
+        }
+        
+        bankManager.depositCustomerQueue.clear()
+        bankManager.loanCustomerQueue.clear()
+        let _ = readyListStackView.arrangedSubviews.map { $0.removeFromSuperview() }
+    }
     
 }
 

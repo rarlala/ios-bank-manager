@@ -7,6 +7,16 @@ final class BankManager {
     let depositCustomerQueue = Queue<Int>()
     let loanCustomerQueue = Queue<Int>()
     private var startTime: Date?
+    var totalCustomer: Int = 0
+    var currentStatus: Status = .allStop
+    
+    var count = 0
+    
+    enum Status {
+        case allStop, depositStop, loanStop, run
+    }
+    
+    var timer = Timer()
     
     init(depositTellerCount: Int, loanTellerCount: Int) {
         self.customerCount = Int.random(in: 10...30)
@@ -14,11 +24,47 @@ final class BankManager {
         self.loanTellers = Tellers(tellerCount: loanTellerCount, tellerType: .Loan)
     }
     
-   
     func openBank() {
         startTime = Date()
         createCustomerQueue(customerCount: customerCount)
         startTask()
+    }
+    
+    func startTask() {
+        let depositWork = (depositTellers, depositCustomerQueue)
+        let loanWork = (loanTellers, loanCustomerQueue)
+
+        let group = DispatchGroup()
+        count += 1
+        
+        [depositWork, loanWork].forEach { (tellers, queue) in
+            group.enter()
+            DispatchQueue.global().async {
+
+                tellers.doTask(queue: queue)
+                group.leave()
+            }
+        }
+        
+        group.wait()
+        count -= 1
+        print("group out \(count)")
+        
+        // dispatchQueue -> startTask
+            // 호출될 때마다 group이 새로 생성
+            // DispatchQueue에 스레드가 추가되어 해당 작업을 처리
+                // 근데 모든 큐가 빌때까지 실행됨
+                // -> 그래서 CPU가 올라간다.
+        
+                // 큐가 비면 순차적으로 해제됨
+            
+        // semaphore 예금 2, 대출 1 제한
+
+        // 그룹, 그룹, 그룹, 그룹, 그룹
+        // 큐에 동시 접근
+            // 누군가는 뽑았음
+            // 누군가는 뽑지 못함
+        
     }
     
     func finishTask() {
@@ -37,27 +83,12 @@ final class BankManager {
             
             switch work {
             case .Deposit:
-                depositCustomerQueue.enqueue(data: n)
+                depositCustomerQueue.enqueue(data: totalCustomer + n)
+                NotificationCenter.default.post(name: NSNotification.Name("AddDepositLabel"), object: self.totalCustomer + n)
             case .Loan:
-                loanCustomerQueue.enqueue(data: n)
+                loanCustomerQueue.enqueue(data: totalCustomer + n)
+                NotificationCenter.default.post(name: NSNotification.Name("AddLoanLabel"), object: self.totalCustomer + n)
             }
         }
     }
-    
-    private func startTask() {
-        let depositWork = (depositTellers, depositCustomerQueue)
-        let loanWork = (loanTellers, loanCustomerQueue)
-        
-        let group = DispatchGroup()
-        [depositWork, loanWork].forEach { (tellers, queue) in
-            group.enter()
-            DispatchQueue.global().async {
-                tellers.doTask(queue: queue)
-                group.leave()
-            }
-        }
-        
-        group.wait()
-    }
-    
 }
