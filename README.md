@@ -43,10 +43,6 @@
 - 초기화 버튼 클릭시 모든 대기열과 타이머를 초기화 
 
 
-
-## 구조 설명
-
-
 ## Trouble Shooting
 ### Teller내 doTask 코드 내 비동기 코드를 사용한 부분에서 예금이 정상적으로 group.leave()가 되지 않음
 ![image](https://hackmd.io/_uploads/H15_6B4Ep.png)
